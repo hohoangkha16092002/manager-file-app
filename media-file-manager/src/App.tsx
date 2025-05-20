@@ -55,31 +55,32 @@ const handleSelectFolder = async () => {
   }
 };
 
-  const handleLabelChange = (filePath: string, value: string) => {
-    setLabels((prev) => ({ ...prev, [filePath]: value }));
+  const handleLabelChange = (filePath: string, newLabel: string) => {
+    setLabels(prev => ({ ...prev, [filePath]: newLabel }));
   };
 
   const handleApplyLabel = async (filePath: string) => {
     const label = labels[filePath];
     if (!label) return;
 
-    const result = await window.electronAPI.labelFile(filePath, label);
-    if (result.success && result.newPath) {
-      setFiles((prev) =>
-        prev.map((f) =>
+    const res = await window.electronAPI.labelFile(filePath, label);
+    if (res.success && res.newPath && res.newName) {
+      setFiles(prev =>
+        prev.map(f =>
           f.path === filePath
-            ? {
-                ...f,
-                path: result.newPath!,
-                name: result.newName!,
-              }
+            ? { ...f, path: res.newPath!, name: res.newName! }
             : f
         )
       );
+
+      if (!tabs.includes(label)) {
+        setTabs(prev => [...prev, label]);
+      }
     } else {
-      alert(result.error || 'Gắn nhãn thất bại');
+      alert(res.error || 'Gắn nhãn thất bại.');
     }
   };
+
 
   const handleAddTab = () => {
     const trimmed = newLabel.trim();
@@ -129,12 +130,18 @@ const handleSelectFolder = async () => {
         {filteredFiles.map((f) => (
           <li key={f.path}>
             <strong>{f.name}</strong> - {Math.round(f.size / 1024)} KB -{' '}
-            {new Date(f.mtime).toLocaleString()} <br />
-            <input
-              placeholder="Tên nhãn..."
+            {new Date(f.mtime).toLocaleString()}
+            <select
               value={labels[f.path] || ''}
               onChange={(e) => handleLabelChange(f.path, e.target.value)}
-            />
+            >
+              <option value="">-- Chọn nhãn --</option>
+              {tabs.map(label => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
             <button onClick={() => handleApplyLabel(f.path)}>Gắn nhãn</button>
           </li>
         ))}
