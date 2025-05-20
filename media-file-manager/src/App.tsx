@@ -13,7 +13,10 @@ declare global {
     electronAPI: {
       selectFolder: () => Promise<string | null>;
       readDirFiles: (folderPath: string) => Promise<FileItem[]>;
-      labelFile: (filePath: string, label: string) => Promise<{
+      labelFile: (
+        filePath: string,
+        label: string
+      ) => Promise<{
         success: boolean;
         newPath?: string;
         newName?: string;
@@ -23,7 +26,7 @@ declare global {
   }
 }
 
-function extractLabel(fileName: string): string | null {
+function extractLabelFromName(fileName: string): string | null {
   const match = fileName.match(/^(.+?)!_/);
   return match ? match[1] : null;
 }
@@ -32,55 +35,75 @@ export default function App() {
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
-  const [tabs, setTabs] = useState<string[]>([]); // ['label1', 'label2']
+  const [tabs, setTabs] = useState<string[]>([]);
   const [currentTab, setCurrentTab] = useState<string>('All');
   const [newLabel, setNewLabel] = useState('');
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
 
-const handleSelectFolder = async () => {
-  const selected = await window.electronAPI.selectFolder();
-  if (selected) {
+  const handleSelectFolder = async () => {
+    const selected = await window.electronAPI.selectFolder();
+    if (!selected) return;
+
     setFolderPath(selected);
-    const files = await window.electronAPI.readDirFiles(selected);
+    const result = await window.electronAPI.readDirFiles(selected);
 
-    // Tự động trích xuất các label từ tên file
+    const initialLabels: Record<string, string> = {};
     const detectedLabels = new Set<string>();
-    files.forEach((f) => {
-      const match = f.name.match(/^(.+?)!_/);
-      if (match) detectedLabels.add(match[1]);
+
+    result.forEach((file) => {
+      const label = extractLabelFromName(file.name);
+      if (label) {
+        initialLabels[file.path] = label;
+        detectedLabels.add(label);
+      }
     });
 
+    setLabels(initialLabels);
     setTabs([...detectedLabels]);
-    setFiles(files);
-    setCurrentTab('All'); // reset tab hiện tại
-  }
-};
-
-  const handleLabelChange = (filePath: string, newLabel: string) => {
-    setLabels(prev => ({ ...prev, [filePath]: newLabel }));
+    setFiles(result);
+    setCurrentTab('All');
   };
 
-  const handleApplyLabel = async (filePath: string) => {
-    const label = labels[filePath] || '';
+  const applyLabel = async (filePath: string, newLabel: string) => {
+    setLoadingPaths((prev) => new Set(prev).add(filePath));
+    setLabels((prev) => ({ ...prev, [filePath]: newLabel }));
 
-    const res = await window.electronAPI.labelFile(filePath, label);
-    if (res.success && res.newPath && res.newName) {
-      setFiles(prev =>
-        prev.map(f =>
-          f.path === filePath
-            ? { ...f, path: res.newPath!, name: res.newName! }
-            : f
-        )
-      );
+    try {
+      const res = await window.electronAPI.labelFile(filePath, newLabel);
 
-      // Nếu là gắn lại label mới → thêm vào tab nếu chưa có
-      if (label && !tabs.includes(label)) {
-        setTabs(prev => [...prev, label]);
+      setLoadingPaths((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(filePath);
+        return newSet;
+      });
+
+      if (res.success && res.newPath && res.newName) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.path === filePath
+              ? { ...f, path: res.newPath!, name: res.newName! }
+              : f
+          )
+        );
+
+        setLabels((prev) => {
+          const updated = { ...prev };
+          delete updated[filePath];
+          updated[res.newPath!] = newLabel;
+          return updated;
+        });
+
+        if (newLabel && !tabs.includes(newLabel)) {
+          setTabs((prev) => [...prev, newLabel]);
+        }
+      } else {
+        alert(res.error || 'Gắn/bỏ nhãn thất bại.');
       }
-    } else {
-      alert(res.error || 'Gắn/bỏ nhãn thất bại.');
+    } catch (err) {
+      console.error(err);
+      alert('Có lỗi xảy ra khi gắn nhãn.');
     }
   };
-
 
   const handleAddTab = () => {
     const trimmed = newLabel.trim();
@@ -93,7 +116,7 @@ const handleSelectFolder = async () => {
   const filteredFiles =
     currentTab === 'All'
       ? files
-      : files.filter((f) => extractLabel(f.name) === currentTab);
+      : files.filter((f) => extractLabelFromName(f.name) === currentTab);
 
   return (
     <div>
@@ -132,17 +155,19 @@ const handleSelectFolder = async () => {
             <strong>{f.name}</strong> - {Math.round(f.size / 1024)} KB -{' '}
             {new Date(f.mtime).toLocaleString()}
             <select
+              disabled={loadingPaths.has(f.path)}
               value={labels[f.path] || ''}
-              onChange={(e) => handleLabelChange(f.path, e.target.value)}
+              onChange={(e) => applyLabel(f.path, e.target.value)}
             >
-              <option value="">-- Chọn nhãn --</option>
-              {tabs.map(label => (
-                <option key={label} value={label}>
-                  {label}
-                </option>
-              ))}
+              <option value="">-- Bỏ nhãn --</option>
+              {tabs
+                .filter((tab) => tab !== 'All')
+                .map((tab) => (
+                  <option key={tab} value={tab}>
+                    {tab}
+                  </option>
+                ))}
             </select>
-            <button onClick={() => handleApplyLabel(f.path)}>Gắn nhãn</button>
           </li>
         ))}
       </ul>

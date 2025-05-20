@@ -22,7 +22,7 @@ function createWindow() {
   )
 
   // Mở devtools cho debug
-  // win.webContents.openDevTools();
+  win.webContents.openDevTools();
 
   win.on('closed', () => {
     win = null;
@@ -65,6 +65,7 @@ ipcMain.handle('fs:labelFile', async (event, filePath: string, label: string) =>
     const base = path.basename(filePath, ext);
 
     let newBase: string;
+    console.log(`Label: ${label}, Base: ${base}, Ext: ${ext}`);
 
     if (label) {
       // Đổi sang nhãn mới, xoá nhãn cũ nếu có

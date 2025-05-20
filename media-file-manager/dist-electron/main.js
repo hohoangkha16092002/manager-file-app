@@ -22,7 +22,7 @@ function createWindow() {
         ? 'http://localhost:5173'
         : `file://${path_1.default.join(__dirname, '../dist/index.html')}`);
     // Mở devtools cho debug
-    // win.webContents.openDevTools();
+    win.webContents.openDevTools();
     win.on('closed', () => {
         win = null;
     });
@@ -62,6 +62,7 @@ electron_1.ipcMain.handle('fs:labelFile', async (event, filePath, label) => {
         const ext = path_1.default.extname(filePath);
         const base = path_1.default.basename(filePath, ext);
         let newBase;
+        console.log(`Label: ${label}, Base: ${base}, Ext: ${ext}`);
         if (label) {
             // Đổi sang nhãn mới, xoá nhãn cũ nếu có
             const oldLabelMatch = base.match(/^(.+?)!_(.+)$/);
