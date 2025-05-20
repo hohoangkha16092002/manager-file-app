@@ -62,32 +62,34 @@ ipcMain.handle('fs:labelFile', async (event, filePath: string, label: string) =>
   try {
     const dir = path.dirname(filePath);
     const ext = path.extname(filePath);
-    const originalBase = path.basename(filePath, ext);
+    const base = path.basename(filePath, ext);
 
-    // Nếu file đã có label, loại bỏ nó
-    const baseWithoutLabel = originalBase.includes('!_')
-      ? originalBase.split('!_').slice(1).join('!_') // bỏ phần nhãn cũ
-      : originalBase;
+    let newBase: string;
 
-    const newBase = `${label}!_${baseWithoutLabel}`;
+    if (label) {
+      // Đổi sang nhãn mới, xoá nhãn cũ nếu có
+      const oldLabelMatch = base.match(/^(.+?)!_(.+)$/);
+      const originalName = oldLabelMatch ? oldLabelMatch[2] : base;
+      newBase = `${label}!_${originalName}`;
+    } else {
+      // Bỏ nhãn, lấy lại tên gốc
+      const oldLabelMatch = base.match(/^(.+?)!_(.+)$/);
+      if (!oldLabelMatch) {
+        return { success: false, error: 'File không có nhãn để bỏ.' };
+      }
+      newBase = oldLabelMatch[2]; // tên gốc
+    }
+
     const newName = `${newBase}${ext}`;
     const newPath = path.join(dir, newName);
 
-    // Nếu đã đúng nhãn rồi thì không cần rename
-    if (filePath === newPath) {
-      return { success: true, newPath, newName };
-    }
-
-    // Nếu file đích đã tồn tại, báo lỗi
     if (fs.existsSync(newPath)) {
-      return { success: false, error: 'File đã tồn tại sau khi gắn nhãn.' };
+      return { success: false, error: 'File đã tồn tại sau khi đổi nhãn.' };
     }
 
     await fs.promises.rename(filePath, newPath);
     return { success: true, newPath, newName };
-
   } catch (error) {
-    console.error('Lỗi khi gắn nhãn:', error);
     return { success: false, error: String(error) };
   }
 });

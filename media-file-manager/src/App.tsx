@@ -60,8 +60,7 @@ const handleSelectFolder = async () => {
   };
 
   const handleApplyLabel = async (filePath: string) => {
-    const label = labels[filePath];
-    if (!label) return;
+    const label = labels[filePath] || '';
 
     const res = await window.electronAPI.labelFile(filePath, label);
     if (res.success && res.newPath && res.newName) {
@@ -73,11 +72,12 @@ const handleSelectFolder = async () => {
         )
       );
 
-      if (!tabs.includes(label)) {
+      // Nếu là gắn lại label mới → thêm vào tab nếu chưa có
+      if (label && !tabs.includes(label)) {
         setTabs(prev => [...prev, label]);
       }
     } else {
-      alert(res.error || 'Gắn nhãn thất bại.');
+      alert(res.error || 'Gắn/bỏ nhãn thất bại.');
     }
   };
 
