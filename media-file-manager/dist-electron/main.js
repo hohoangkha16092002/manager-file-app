@@ -22,7 +22,7 @@ function createWindow() {
         ? 'http://localhost:5173'
         : `file://${path_1.default.join(__dirname, '../dist/index.html')}`);
     // Mở devtools cho debug
-    win.webContents.openDevTools();
+    // win.webContents.openDevTools();
     win.on('closed', () => {
         win = null;
     });
@@ -54,6 +54,34 @@ electron_1.ipcMain.handle('fs:readDirFiles', async (event, folderPath) => {
     catch (error) {
         console.error(error);
         return [];
+    }
+});
+electron_1.ipcMain.handle('fs:labelFile', async (event, filePath, label) => {
+    try {
+        const dir = path_1.default.dirname(filePath);
+        const ext = path_1.default.extname(filePath);
+        const originalBase = path_1.default.basename(filePath, ext);
+        // Nếu file đã có label, loại bỏ nó
+        const baseWithoutLabel = originalBase.includes('!_')
+            ? originalBase.split('!_').slice(1).join('!_') // bỏ phần nhãn cũ
+            : originalBase;
+        const newBase = `${label}!_${baseWithoutLabel}`;
+        const newName = `${newBase}${ext}`;
+        const newPath = path_1.default.join(dir, newName);
+        // Nếu đã đúng nhãn rồi thì không cần rename
+        if (filePath === newPath) {
+            return { success: true, newPath, newName };
+        }
+        // Nếu file đích đã tồn tại, báo lỗi
+        if (fs_1.default.existsSync(newPath)) {
+            return { success: false, error: 'File đã tồn tại sau khi gắn nhãn.' };
+        }
+        await fs_1.default.promises.rename(filePath, newPath);
+        return { success: true, newPath, newName };
+    }
+    catch (error) {
+        console.error('Lỗi khi gắn nhãn:', error);
+        return { success: false, error: String(error) };
     }
 });
 electron_1.app.whenReady().then(() => {
