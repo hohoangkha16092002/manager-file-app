@@ -138,10 +138,12 @@ export default function App() {
     setNewLabel("");
   };
 
-  const filteredFiles =
-    currentTab === "All"
-      ? files
-      : files.filter((f) => extractLabelFromName(f.name) === currentTab);
+const filteredFiles =
+  currentTab === "All"
+    ? flattenFiles(files) // lấy tất cả file kể cả trong folder con
+    : flattenFiles(files).filter(
+        (f) => extractLabelFromName(f.name) === currentTab
+      );
 
   const renderFileTree = (items: any[]) => {
     return (
@@ -228,31 +230,31 @@ export default function App() {
 
       {/* File list */}
       {viewMode === "tree" ? (
-        renderFileTree(files)
-      ) : (
-        <ul>
-          {filteredFiles.map((f) => (
-            <li key={f.path}>
-              <strong>{f.name}</strong> - {Math.round(f.size / 1024)} KB -{" "}
-              {new Date(f.mtime).toLocaleString()}
-              <select
-                disabled={loadingPaths.has(f.path)}
-                value={labels[f.path] || ""}
-                onChange={(e) => applyLabel(f.path, e.target.value)}
-              >
-                <option value="">-- Bỏ nhãn --</option>
-                {tabs
-                  .filter((tab) => tab !== "All")
-                  .map((tab) => (
-                    <option key={tab} value={tab}>
-                      {tab}
-                    </option>
-                  ))}
-              </select>
-            </li>
-          ))}
-        </ul>
-      )}
+  renderFileTree(files)
+) : (
+  <ul>
+    {filteredFiles.map((f) => (
+      <li key={f.path}>
+        <strong>{f.name}</strong> - {Math.round(f.size / 1024)} KB -{" "}
+        {new Date(f.mtime).toLocaleString()}
+        <select
+          disabled={loadingPaths.has(f.path)}
+          value={labels[f.path] || ""}
+          onChange={(e) => applyLabel(f.path, e.target.value)}
+        >
+          <option value="">-- Bỏ nhãn --</option>
+          {tabs
+            .filter((tab) => tab !== "All")
+            .map((tab) => (
+              <option key={tab} value={tab}>
+                {tab}
+              </option>
+            ))}
+        </select>
+      </li>
+    ))}
+  </ul>
+)}
     </div>
   );
 }

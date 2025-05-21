@@ -67,30 +67,38 @@ electron_1.ipcMain.handle("fs:readDirFiles", async (event, folderPath, asTree) =
         }
         return results;
     }
+    // Thay đổi đoạn này:
     try {
         if (asTree) {
             return await readRecursive(folderPath);
         }
         else {
-            const entries = await fs_1.default.promises.readdir(folderPath, {
-                withFileTypes: true,
-            });
-            const files = [];
-            for (const entry of entries) {
-                const fullPath = path_1.default.join(folderPath, entry.name);
-                const stats = await fs_1.default.promises.stat(fullPath);
-                if (entry.isFile()) {
-                    files.push({
-                        name: entry.name,
-                        path: fullPath,
-                        size: stats.size,
-                        mtime: stats.mtimeMs,
-                        ctime: stats.ctimeMs,
-                        isDirectory: false,
-                    });
+            // Trả về tất cả file phẳng (bao gồm cả trong folder con)
+            const flattenFiles = async (dirPath) => {
+                const entries = await fs_1.default.promises.readdir(dirPath, {
+                    withFileTypes: true,
+                });
+                let files = [];
+                for (const entry of entries) {
+                    const fullPath = path_1.default.join(dirPath, entry.name);
+                    const stats = await fs_1.default.promises.stat(fullPath);
+                    if (entry.isDirectory()) {
+                        files = files.concat(await flattenFiles(fullPath));
+                    }
+                    else {
+                        files.push({
+                            name: entry.name,
+                            path: fullPath,
+                            size: stats.size,
+                            mtime: stats.mtimeMs,
+                            ctime: stats.ctimeMs,
+                            isDirectory: false,
+                        });
+                    }
                 }
-            }
-            return files;
+                return files;
+            };
+            return await flattenFiles(folderPath);
         }
     }
     catch (error) {

@@ -84,32 +84,36 @@ ipcMain.handle(
       return results;
     }
 
+    // Thay đổi đoạn này:
     try {
       if (asTree) {
         return await readRecursive(folderPath);
       } else {
-        const entries = await fs.promises.readdir(folderPath, {
-          withFileTypes: true,
-        });
-        const files: FileItem[] = [];
-
-        for (const entry of entries) {
-          const fullPath = path.join(folderPath, entry.name);
-          const stats = await fs.promises.stat(fullPath);
-
-          if (entry.isFile()) {
-            files.push({
-              name: entry.name,
-              path: fullPath,
-              size: stats.size,
-              mtime: stats.mtimeMs,
-              ctime: stats.ctimeMs,
-              isDirectory: false,
-            });
+        // Trả về tất cả file phẳng (bao gồm cả trong folder con)
+        const flattenFiles = async (dirPath: string): Promise<FileItem[]> => {
+          const entries = await fs.promises.readdir(dirPath, {
+            withFileTypes: true,
+          });
+          let files: FileItem[] = [];
+          for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            const stats = await fs.promises.stat(fullPath);
+            if (entry.isDirectory()) {
+              files = files.concat(await flattenFiles(fullPath));
+            } else {
+              files.push({
+                name: entry.name,
+                path: fullPath,
+                size: stats.size,
+                mtime: stats.mtimeMs,
+                ctime: stats.ctimeMs,
+                isDirectory: false,
+              });
+            }
           }
-        }
-
-        return files;
+          return files;
+        };
+        return await flattenFiles(folderPath);
       }
     } catch (error) {
       console.error(error);
