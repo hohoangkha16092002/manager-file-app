@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
 type FileItem = {
   name: string;
@@ -12,7 +12,10 @@ declare global {
   interface Window {
     electronAPI: {
       selectFolder: () => Promise<string | null>;
-      readDirFiles: (folderPath: string) => Promise<FileItem[]>;
+      readDirFiles: (
+        folderPath: string,
+        asTree?: boolean
+      ) => Promise<FileItem[]>;
       labelFile: (
         filePath: string,
         label: string
@@ -36,21 +39,41 @@ export default function App() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [tabs, setTabs] = useState<string[]>([]);
-  const [currentTab, setCurrentTab] = useState<string>('All');
-  const [newLabel, setNewLabel] = useState('');
+  const [currentTab, setCurrentTab] = useState<string>("All");
+  const [newLabel, setNewLabel] = useState("");
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"flat" | "tree">("flat");
+
+  const flattenFiles = (items: any[]): FileItem[] => {
+    let result: FileItem[] = [];
+
+    items.forEach((item) => {
+      if (item.isDirectory && item.children) {
+        result = result.concat(flattenFiles(item.children));
+      } else if (!item.isDirectory) {
+        result.push(item);
+      }
+    });
+
+    return result;
+  };
 
   const handleSelectFolder = async () => {
     const selected = await window.electronAPI.selectFolder();
     if (!selected) return;
 
     setFolderPath(selected);
-    const result = await window.electronAPI.readDirFiles(selected);
+    const result = await window.electronAPI.readDirFiles(
+      selected,
+      viewMode === "tree"
+    );
+
+    const flatFiles = viewMode === "tree" ? flattenFiles(result) : result;
 
     const initialLabels: Record<string, string> = {};
     const detectedLabels = new Set<string>();
 
-    result.forEach((file) => {
+    flatFiles.forEach((file) => {
       const label = extractLabelFromName(file.name);
       if (label) {
         initialLabels[file.path] = label;
@@ -61,7 +84,7 @@ export default function App() {
     setLabels(initialLabels);
     setTabs([...detectedLabels]);
     setFiles(result);
-    setCurrentTab('All');
+    setCurrentTab("All");
   };
 
   const applyLabel = async (filePath: string, newLabel: string) => {
@@ -77,31 +100,33 @@ export default function App() {
         return newSet;
       });
 
-      if (res.success && res.newPath && res.newName) {
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.path === filePath
-              ? { ...f, path: res.newPath!, name: res.newName! }
-              : f
-          )
+      if (res.success && folderPath) {
+        // Sau khi đổi nhãn, reload lại danh sách file
+        const result = await window.electronAPI.readDirFiles(
+          folderPath,
+          viewMode === "tree"
         );
+        setFiles(result);
 
-        setLabels((prev) => {
-          const updated = { ...prev };
-          delete updated[filePath];
-          updated[res.newPath!] = newLabel;
-          return updated;
+        // Cập nhật lại labels và tabs
+        const flatFiles = viewMode === "tree" ? flattenFiles(result) : result;
+        const initialLabels: Record<string, string> = {};
+        const detectedLabels = new Set<string>();
+        flatFiles.forEach((file) => {
+          const label = extractLabelFromName(file.name);
+          if (label) {
+            initialLabels[file.path] = label;
+            detectedLabels.add(label);
+          }
         });
-
-        if (newLabel && !tabs.includes(newLabel)) {
-          setTabs((prev) => [...prev, newLabel]);
-        }
+        setLabels(initialLabels);
+        setTabs([...detectedLabels]);
       } else {
-        alert(res.error || 'Gắn/bỏ nhãn thất bại.');
+        alert(res.error || "Gắn/bỏ nhãn thất bại.");
       }
     } catch (err) {
       console.error(err);
-      alert('Có lỗi xảy ra khi gắn nhãn.');
+      alert("Có lỗi xảy ra khi gắn nhãn.");
     }
   };
 
@@ -110,24 +135,60 @@ export default function App() {
     if (trimmed && !tabs.includes(trimmed)) {
       setTabs((prev) => [...prev, trimmed]);
     }
-    setNewLabel('');
+    setNewLabel("");
   };
 
   const filteredFiles =
-    currentTab === 'All'
+    currentTab === "All"
       ? files
       : files.filter((f) => extractLabelFromName(f.name) === currentTab);
+
+  const renderFileTree = (items: any[]) => {
+    return (
+      <ul>
+        {items.map((item) => (
+          <li key={item.path}>
+            <strong>{item.name}</strong>
+            {!item.isDirectory && (
+              <>
+                {" "}
+                - {Math.round(item.size / 1024)} KB -{" "}
+                {new Date(item.mtime).toLocaleString()}
+              </>
+            )}
+            {item.isDirectory && item.children && renderFileTree(item.children)}
+            {!item.isDirectory && (
+              <select
+                disabled={loadingPaths.has(item.path)}
+                value={labels[item.path] || ""}
+                onChange={(e) => applyLabel(item.path, e.target.value)}
+              >
+                <option value="">-- Bỏ nhãn --</option>
+                {tabs
+                  .filter((tab) => tab !== "All")
+                  .map((tab) => (
+                    <option key={tab} value={tab}>
+                      {tab}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  };
 
   return (
     <div>
       <button onClick={handleSelectFolder}>Chọn thư mục</button>
-      <h3>Thư mục: {folderPath || 'Chưa chọn'}</h3>
+      <h3>Thư mục: {folderPath || "Chưa chọn"}</h3>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
         <button
-          onClick={() => setCurrentTab('All')}
-          style={{ fontWeight: currentTab === 'All' ? 'bold' : 'normal' }}
+          onClick={() => setCurrentTab("All")}
+          style={{ fontWeight: currentTab === "All" ? "bold" : "normal" }}
         >
           All
         </button>
@@ -135,7 +196,7 @@ export default function App() {
           <button
             key={tab}
             onClick={() => setCurrentTab(tab)}
-            style={{ fontWeight: currentTab === tab ? 'bold' : 'normal' }}
+            style={{ fontWeight: currentTab === tab ? "bold" : "normal" }}
           >
             {tab}
           </button>
@@ -146,31 +207,52 @@ export default function App() {
           onChange={(e) => setNewLabel(e.target.value)}
         />
         <button onClick={handleAddTab}>+ Thêm nhãn</button>
+        <select
+          value={viewMode}
+          onChange={(e) => {
+            const newMode = e.target.value as "flat" | "tree";
+            setViewMode(newMode);
+            if (folderPath) {
+              window.electronAPI
+                .readDirFiles(folderPath, newMode === "tree")
+                .then((result) => {
+                  setFiles(result);
+                });
+            }
+          }}
+        >
+          <option value="flat">All</option>
+          <option value="tree">Tree View</option>
+        </select>
       </div>
 
       {/* File list */}
-      <ul>
-        {filteredFiles.map((f) => (
-          <li key={f.path}>
-            <strong>{f.name}</strong> - {Math.round(f.size / 1024)} KB -{' '}
-            {new Date(f.mtime).toLocaleString()}
-            <select
-              disabled={loadingPaths.has(f.path)}
-              value={labels[f.path] || ''}
-              onChange={(e) => applyLabel(f.path, e.target.value)}
-            >
-              <option value="">-- Bỏ nhãn --</option>
-              {tabs
-                .filter((tab) => tab !== 'All')
-                .map((tab) => (
-                  <option key={tab} value={tab}>
-                    {tab}
-                  </option>
-                ))}
-            </select>
-          </li>
-        ))}
-      </ul>
+      {viewMode === "tree" ? (
+        renderFileTree(files)
+      ) : (
+        <ul>
+          {filteredFiles.map((f) => (
+            <li key={f.path}>
+              <strong>{f.name}</strong> - {Math.round(f.size / 1024)} KB -{" "}
+              {new Date(f.mtime).toLocaleString()}
+              <select
+                disabled={loadingPaths.has(f.path)}
+                value={labels[f.path] || ""}
+                onChange={(e) => applyLabel(f.path, e.target.value)}
+              >
+                <option value="">-- Bỏ nhãn --</option>
+                {tabs
+                  .filter((tab) => tab !== "All")
+                  .map((tab) => (
+                    <option key={tab} value={tab}>
+                      {tab}
+                    </option>
+                  ))}
+              </select>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
